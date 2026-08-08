@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.Python
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets (auto-annotation API key, stage 7)
+.env
+
+# SQLite database (local, single-user data — never checked in)
+db/*.sqlite
+db/*.sqlite3
+db/*.db
+
+# Ingest inbox — user-dropped raw API response files, not source
+ingest/inbox/api_responses/*
+!ingest/inbox/api_responses/.gitkeep
+
+# Editor / IDE
+.idea/
+.vscode/
+
+# Claude Code config, skills, and commands — not part of the product
+.claude/
+
+# Planning / product docs — not shipped, apart from README
+CLAUDE.md
+spec.md
+tech.md
+stages/
+architecture.mmd
+architecture.svg
+CODING_STANDARDS.md
+
+# OS cruft
+.DS_Store
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
