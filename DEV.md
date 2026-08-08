@@ -8,7 +8,7 @@ tagging view). This is how to run what exists today.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install fastapi uvicorn tiktoken python-dotenv pytest ruff httpx
+pip install fastapi uvicorn tiktoken python-dotenv pytest ruff httpx2
 ```
 
 Note: don't use `pip install -e .` — this repo has multiple top-level packages (`app`, `db`,
