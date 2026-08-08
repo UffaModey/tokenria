@@ -13,6 +13,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/UffaModey/tokenria/actions/workflows/ci.yml"><img src="https://github.com/UffaModey/tokenria/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/status-early--development-orange?style=flat-square" alt="Status: Early Development">
@@ -61,7 +62,7 @@ Every ingested record is tagged as either *exact* (real provider usage data) or 
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install fastapi uvicorn tiktoken python-dotenv pytest ruff httpx
+pip install fastapi uvicorn tiktoken python-dotenv pytest ruff httpx2
 ```
 
 Ingest your real Claude Code usage data (parses every session under `~/.claude/projects/**/*.jsonl`, safe to re-run any time):
@@ -99,7 +100,7 @@ See [DEV.md](DEV.md) for the full walkthrough, including tests and linting.
 
 ## Contributing
 
-This project is being built in the open, in stages, each one built and verified before the next starts. If you want to contribute, watch the repo for updates, open an issue, or send a PR — see [DEV.md](DEV.md) to get a local environment running first.
+This project is being built in the open, in stages, each one built and verified before the next starts. If you want to contribute, watch the repo for updates, open an issue, or send a PR — see [CONTRIBUTING.md](CONTRIBUTING.md) to get started, and [DEV.md](DEV.md) for the local environment walkthrough. Participation is covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
