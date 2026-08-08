@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Tokenria — Tagging</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 800px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    color: #1a1a1a;
+  }
+  nav { margin-bottom: 1rem; font-size: 0.9rem; }
+  nav a { margin-right: 1rem; }
+  h1 { font-size: 1.4rem; }
+  .picker { margin-bottom: 1rem; }
+  .picker select { width: 100%; padding: 0.4rem; }
+  details.prompt {
+    margin-bottom: 1rem;
+    padding: 0.6rem 0.8rem;
+    background: #f6f6f6;
+    border-radius: 4px;
+  }
+  details.prompt summary { cursor: pointer; font-weight: 600; }
+  details.prompt .prompt-text { margin-top: 0.5rem; white-space: pre-wrap; }
+  #chunks { margin-bottom: 1rem; }
+  .chunk {
+    display: block;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.4rem;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    white-space: pre-wrap;
+    cursor: pointer;
+    line-height: 1.4;
+  }
+  .chunk.unmarked { background: #fff; }
+  .chunk.used { background: #e3f3e6; border-color: #7fbf8f; }
+  .chunk.discarded { background: #fbe6e6; border-color: #d98d8d; text-decoration: line-through; }
+  .status-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+  .status-line .ratio { font-weight: 600; }
+  button#save-btn {
+    padding: 0.5rem 1.2rem;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  #save-status { margin-left: 0.8rem; font-size: 0.9rem; color: #666; }
+</style>
+</head>
+<body>
+  <nav><a href="/">Accounting</a> | <a href="/static/tagging.html">Tagging</a></nav>
+  <h1>Tokenria — Tagging</h1>
+
+  <div class="picker">
+    <select id="record-picker"></select>
+  </div>
+
+  <details class="prompt" open>
+    <summary>Prompt</summary>
+    <div class="prompt-text" id="prompt-text"></div>
+  </details>
+
+  <div id="chunks"></div>
+
+  <div class="status-line">
+    <span class="ratio" id="ratio-info">—</span>
+    <span>
+      <button id="save-btn">Save</button>
+      <span id="save-status"></span>
+    </span>
+  </div>
+
+  <script src="/static/js/tagging.js"></script>
+</body>
+</html>

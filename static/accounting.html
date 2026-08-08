@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Tokenria — Accounting</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 960px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    color: #1a1a1a;
+  }
+  nav { margin-bottom: 1rem; font-size: 0.9rem; }
+  nav a { margin-right: 1rem; }
+  h1 { font-size: 1.4rem; }
+  .controls { margin-bottom: 1.5rem; }
+  .controls label { margin-right: 1.5rem; }
+  .totals {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+  }
+  .totals .stat { }
+  .totals .stat .value { font-size: 1.5rem; font-weight: 600; }
+  .totals .stat .label { font-size: 0.85rem; color: #666; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1.5rem;
+    font-size: 0.9rem;
+  }
+  th, td { text-align: right; padding: 0.4rem 0.6rem; border-bottom: 1px solid #eee; }
+  th:first-child, td:first-child { text-align: left; }
+  .estimated-tag {
+    display: inline-block;
+    font-size: 0.75rem;
+    padding: 0 0.4rem;
+    border: 1px dashed #999;
+    border-radius: 3px;
+    color: #666;
+    margin-left: 0.4rem;
+  }
+</style>
+</head>
+<body>
+  <nav><a href="/">Accounting</a> | <a href="/static/tagging.html">Tagging</a></nav>
+  <h1>Tokenria — Accounting</h1>
+
+  <div class="controls">
+    <label>
+      Group by:
+      <select id="group-by">
+        <option value="day" selected>Day</option>
+        <option value="week">Week</option>
+        <option value="month">Month</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="totals">
+    <div class="stat">
+      <div class="value" id="total-tokens">—</div>
+      <div class="label">Total tokens</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="total-cost">—</div>
+      <div class="label">Total cost (known-cost records)</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="cache-read-share">—</div>
+      <div class="label">% of tokens from cache reads</div>
+    </div>
+  </div>
+
+  <canvas id="accounting-chart" height="100"></canvas>
+
+  <table id="detail-table">
+    <thead>
+      <tr>
+        <th>Period</th>
+        <th>New input</th>
+        <th>Cache write</th>
+        <th>Cache read</th>
+        <th>Output</th>
+        <th>Cost</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script src="/static/js/accounting.js"></script>
+</body>
+</html>
