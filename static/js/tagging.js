@@ -6,6 +6,11 @@ let currentResponseText = "";
 // chunk = { start, end, state }
 let chunks = [];
 
+// picker filters: id/date/session are mutually narrowing over allRecords.
+// { id, date, session_id }, each "" meaning "Any".
+let allRecords = [];
+let filters = { id: "", date: "", session_id: "" };
+
 function splitOnBlankLines(text) {
   const ranges = [];
   const blankLineRe = /\n[ \t]*\n+/g;
@@ -116,6 +121,9 @@ async function loadRecord(recordId) {
   const record = await (await fetch(`/api/records/${recordId}`)).json();
   currentResponseText = record.response_text || "";
   document.getElementById("prompt-text").textContent = record.prompt_text || "";
+  const sessionLabel = record.session_name || record.session_id;
+  document.getElementById("record-label").textContent =
+    `Record #${record.id} — ${record.timestamp} — session ${sessionLabel}`;
 
   chunks = splitIntoChunks(currentResponseText).map(([start, end]) => ({
     start,
@@ -127,25 +135,162 @@ async function loadRecord(recordId) {
   renderChunks();
 }
 
-async function loadPicker() {
-  const records = await (
-    await fetch("/api/records?has_response_text=true&limit=100")
-  ).json();
+function recordMatchesFilters(record, activeFilters, skipKey) {
+  if (skipKey !== "id" && activeFilters.id && String(record.id) !== activeFilters.id) {
+    return false;
+  }
+  if (skipKey !== "date" && activeFilters.date && record.date !== activeFilters.date) {
+    return false;
+  }
+  if (
+    skipKey !== "session_id" &&
+    activeFilters.session_id &&
+    record.session_id !== activeFilters.session_id
+  ) {
+    return false;
+  }
+  return true;
+}
 
-  const picker = document.getElementById("record-picker");
-  picker.innerHTML = "";
-  for (const record of records) {
+// Options for one filter are computed against the OTHER two filters only,
+// so a dropdown never filters out its own currently selected value.
+function buildFilterOptions(key) {
+  const candidates = allRecords.filter((r) => recordMatchesFilters(r, filters, key));
+
+  if (key === "id") {
+    // id is an opaque UUID string, not orderable -- candidates is already
+    // timestamp-DESC (from allRecords), so preserve that order rather than
+    // sorting the ids themselves.
+    const ids = [...new Set(candidates.map((r) => r.id))];
+    return ids.map((id) => ({ value: id, label: `#${id.slice(0, 8)}…` }));
+  }
+
+  if (key === "date") {
+    const dates = [...new Set(candidates.map((r) => r.date))].sort().reverse();
+    return dates.map((date) => ({ value: date, label: date }));
+  }
+
+  // session_id: label with the session's AI-generated title when one
+  // exists, ordered by most recent activity. Falls back to a truncated id
+  // for sessions too short to have gotten a title.
+  const latestBySession = new Map();
+  const countBySession = new Map();
+  const nameBySession = new Map();
+  for (const r of candidates) {
+    countBySession.set(r.session_id, (countBySession.get(r.session_id) || 0) + 1);
+    const latest = latestBySession.get(r.session_id);
+    if (!latest || r.timestamp > latest) {
+      latestBySession.set(r.session_id, r.timestamp);
+    }
+    if (r.session_name && !nameBySession.has(r.session_id)) {
+      nameBySession.set(r.session_id, r.session_name);
+    }
+  }
+  const sessionIds = [...latestBySession.keys()].sort((a, b) =>
+    latestBySession.get(b) > latestBySession.get(a) ? 1 : -1,
+  );
+  return sessionIds.map((sessionId) => {
+    const name = nameBySession.get(sessionId) || `${sessionId.slice(0, 8)}…`;
+    return { value: sessionId, label: `${name} (${countBySession.get(sessionId)})` };
+  });
+}
+
+function renderFilterSelect(selectEl, key, options) {
+  selectEl.innerHTML = "";
+  const anyOption = document.createElement("option");
+  anyOption.value = "";
+  anyOption.textContent = "Any";
+  selectEl.appendChild(anyOption);
+  for (const { value, label } of options) {
     const option = document.createElement("option");
-    option.value = record.id;
-    const preview = (record.prompt_text || "").slice(0, 60).replace(/\s+/g, " ");
-    option.textContent = `#${record.id} — ${record.timestamp} — ${preview}`;
-    picker.appendChild(option);
+    option.value = value;
+    option.textContent = label;
+    selectEl.appendChild(option);
   }
-  picker.addEventListener("change", () => loadRecord(Number(picker.value)));
+  selectEl.value = filters[key];
+}
 
-  if (records.length > 0) {
-    await loadRecord(records[0].id);
+// Changing one filter can make another's current value impossible (e.g. a
+// previously picked date that doesn't exist in the newly picked session).
+// Resolve all three to a mutually consistent state before any of them are
+// rendered, so a stale value from one filter can't hide a still-valid
+// option in another (each key's own options ignore its own filter, so this
+// converges in at most 3 passes).
+function stabilizeFilters() {
+  for (let pass = 0; pass < 3; pass++) {
+    let changed = false;
+    for (const key of ["id", "date", "session_id"]) {
+      if (!filters[key]) continue;
+      const validValues = new Set(buildFilterOptions(key).map((o) => o.value));
+      if (!validValues.has(filters[key])) {
+        filters[key] = "";
+        changed = true;
+      }
+    }
+    if (!changed) break;
   }
+}
+
+function renderFilters() {
+  stabilizeFilters();
+
+  renderFilterSelect(document.getElementById("filter-id"), "id", buildFilterOptions("id"));
+  renderFilterSelect(
+    document.getElementById("filter-date"),
+    "date",
+    buildFilterOptions("date"),
+  );
+  renderFilterSelect(
+    document.getElementById("filter-session"),
+    "session_id",
+    buildFilterOptions("session_id"),
+  );
+
+  const candidates = allRecords
+    .filter((r) => recordMatchesFilters(r, filters, null))
+    .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+
+  const statusEl = document.getElementById("filter-status");
+  if (candidates.length === 0) {
+    statusEl.textContent = "No matching records.";
+    currentRecordId = null;
+    chunks = [];
+    document.getElementById("prompt-text").textContent = "";
+    document.getElementById("record-label").textContent = "";
+    renderChunks();
+    return;
+  }
+  statusEl.textContent =
+    candidates.length > 1 ? `${candidates.length} matching records — showing most recent.` : "";
+
+  const target = candidates[0];
+  if (target.id !== currentRecordId) {
+    loadRecord(target.id);
+  }
+}
+
+function onFilterChange(key, value) {
+  filters[key] = value;
+  renderFilters();
+}
+
+async function loadPicker() {
+  allRecords = await (await fetch("/api/records/picker")).json();
+  for (const record of allRecords) {
+    record.date = record.timestamp.slice(0, 10);
+  }
+
+  document
+    .getElementById("filter-id")
+    .addEventListener("change", (e) => onFilterChange("id", e.target.value));
+  document
+    .getElementById("filter-date")
+    .addEventListener("change", (e) => onFilterChange("date", e.target.value));
+  document
+    .getElementById("filter-session")
+    .addEventListener("change", (e) => onFilterChange("session_id", e.target.value));
+
+  renderFilters();
 }
 
 async function saveTags() {

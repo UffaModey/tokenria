@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -51,6 +53,35 @@ def test_has_response_text_filter_excludes_empty_responses(client):
     assert taggable[0]["response_text"] == "a real reply"
     assert len(empty_only) == 1
     assert empty_only[0]["response_text"] == ""
+
+
+def test_picker_returns_lightweight_taggable_records(client):
+    test_client, db_path = client
+    insert_records(
+        [
+            _record(
+                closing_entry_uuid="u1",
+                session_id="sess-a",
+                timestamp="2026-01-01T10:00:00Z",
+                prompt_text="a" * 200,
+                response_text="reply one",
+            ),
+            _record(closing_entry_uuid="u2", response_text=""),
+        ],
+        db_path,
+    )
+
+    response = test_client.get("/api/records/picker")
+    assert response.status_code == 200
+    picker = response.json()
+
+    assert len(picker) == 1
+    row = picker[0]
+    expected_keys = {"id", "timestamp", "session_id", "session_name", "prompt_preview"}
+    assert set(row.keys()) == expected_keys
+    assert row["session_id"] == "sess-a"
+    assert row["timestamp"] == "2026-01-01T10:00:00Z"
+    assert row["prompt_preview"] == "a" * 80
 
 
 def test_get_record_found_and_not_found(client):
@@ -126,9 +157,9 @@ def test_put_tags_never_touches_auto_rows(client):
     conn = get_connection(db_path)
     record_id = conn.execute("SELECT id FROM records").fetchone()[0]
     conn.execute(
-        "INSERT INTO tags (record_id, span_start, span_end, used, source) "
-        "VALUES (?, 0, 4, 1, 'auto')",
-        (record_id,),
+        "INSERT INTO tags (id, record_id, span_start, span_end, used, source) "
+        "VALUES (?, ?, 0, 4, 1, 'auto')",
+        (str(uuid.uuid4()), record_id),
     )
     conn.commit()
     conn.close()

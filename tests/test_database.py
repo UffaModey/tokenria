@@ -1,4 +1,5 @@
 import sqlite3
+import uuid
 
 from db.database import get_connection, init_db, insert_records
 
@@ -97,6 +98,70 @@ def test_unrecognized_model_gets_null_cost_not_dropped(tmp_path):
     assert row[0] is None
 
 
+def test_init_db_adds_session_name_to_a_table_created_without_it(tmp_path):
+    db_path = tmp_path / "tokenria.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE records (
+            id INTEGER PRIMARY KEY,
+            external_id TEXT UNIQUE,
+            source TEXT NOT NULL,
+            session_id TEXT,
+            model TEXT,
+            timestamp TEXT NOT NULL,
+            prompt_text TEXT,
+            response_text TEXT,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+            cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+            is_estimated BOOLEAN NOT NULL,
+            cost_usd REAL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    init_db(db_path)
+
+    conn = get_connection(db_path)
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(records)")}
+    conn.close()
+    assert "session_name" in columns
+
+
+def test_insert_records_writes_and_backfills_session_name(tmp_path):
+    db_path = tmp_path / "tokenria.db"
+    init_db(db_path)
+
+    insert_records([{**BASE_RECORD, "session_name": "Fix the off-by-one bug"}], db_path)
+
+    conn = get_connection(db_path)
+    name = conn.execute("SELECT session_name FROM records").fetchone()[0]
+    assert name == "Fix the off-by-one bug"
+
+    # a later ingest run re-parses the whole session and learns its settled
+    # title only then -- that must update the row inserted earlier, not
+    # just fill in rows that don't have a name yet.
+    insert_records(
+        [
+            {
+                **BASE_RECORD,
+                "closing_entry_uuid": "uuid-2",
+                "session_name": "Fix parse_session's loop bound",
+            }
+        ],
+        db_path,
+    )
+    names = {
+        row[0] for row in conn.execute("SELECT session_name FROM records").fetchall()
+    }
+    conn.close()
+    assert names == {"Fix parse_session's loop bound"}
+
+
 def test_deleting_a_record_cascades_to_its_tags(tmp_path):
     db_path = tmp_path / "tokenria.db"
     init_db(db_path)
@@ -105,9 +170,9 @@ def test_deleting_a_record_cascades_to_its_tags(tmp_path):
     conn = get_connection(db_path)
     record_id = conn.execute("SELECT id FROM records").fetchone()[0]
     conn.execute(
-        "INSERT INTO tags (record_id, span_start, span_end, used, source) "
-        "VALUES (?, 0, 10, 1, 'manual')",
-        (record_id,),
+        "INSERT INTO tags (id, record_id, span_start, span_end, used, source) "
+        "VALUES (?, ?, 0, 10, 1, 'manual')",
+        (str(uuid.uuid4()), record_id),
     )
     conn.commit()
 
