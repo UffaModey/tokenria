@@ -5,6 +5,7 @@ never touches source='auto' rows (stage 7's not-yet-built suggestions).
 """
 
 import sqlite3
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,8 +23,32 @@ class TagIn(BaseModel):
     used: bool
 
 
+@router.get("/records/picker")
+def list_picker_records(db_path: Path = Depends(get_db_path)):
+    """Lightweight id/timestamp/session_id/preview rows for the tagging
+    view's ID/date/session filters — the full taggable set, not paginated,
+    since the filters need every value to cross-reference against.
+    """
+    conn = get_connection(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, timestamp, session_id, session_name,
+                   SUBSTR(prompt_text, 1, 80) AS prompt_preview
+            FROM records
+            WHERE response_text IS NOT NULL AND response_text != ''
+            ORDER BY timestamp DESC
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return [dict(row) for row in rows]
+
+
 @router.get("/records/{record_id}")
-def get_record(record_id: int, db_path: Path = Depends(get_db_path)):
+def get_record(record_id: str, db_path: Path = Depends(get_db_path)):
     conn = get_connection(db_path)
     conn.row_factory = sqlite3.Row
     try:
@@ -39,7 +64,7 @@ def get_record(record_id: int, db_path: Path = Depends(get_db_path)):
 
 
 @router.get("/records/{record_id}/tags")
-def get_tags(record_id: int, db_path: Path = Depends(get_db_path)):
+def get_tags(record_id: str, db_path: Path = Depends(get_db_path)):
     conn = get_connection(db_path)
     conn.row_factory = sqlite3.Row
     try:
@@ -56,7 +81,7 @@ def get_tags(record_id: int, db_path: Path = Depends(get_db_path)):
 
 @router.put("/records/{record_id}/tags")
 def replace_manual_tags(
-    record_id: int, tags: list[TagIn], db_path: Path = Depends(get_db_path)
+    record_id: str, tags: list[TagIn], db_path: Path = Depends(get_db_path)
 ):
     conn = get_connection(db_path)
     try:
@@ -72,10 +97,13 @@ def replace_manual_tags(
         )
         conn.executemany(
             """
-            INSERT INTO tags (record_id, span_start, span_end, used, source)
-            VALUES (?, ?, ?, ?, 'manual')
+            INSERT INTO tags (id, record_id, span_start, span_end, used, source)
+            VALUES (?, ?, ?, ?, ?, 'manual')
             """,
-            [(record_id, t.span_start, t.span_end, t.used) for t in tags],
+            [
+                (str(uuid.uuid4()), record_id, t.span_start, t.span_end, t.used)
+                for t in tags
+            ],
         )
         conn.commit()
     finally:

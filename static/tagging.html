@@ -14,8 +14,21 @@
   nav { margin-bottom: 1rem; font-size: 0.9rem; }
   nav a { margin-right: 1rem; }
   h1 { font-size: 1.4rem; }
-  .picker { margin-bottom: 1rem; }
-  .picker select { width: 100%; padding: 0.4rem; }
+  .filters {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.6rem;
+    margin-bottom: 0.5rem;
+  }
+  .filters label {
+    display: block;
+    font-size: 0.8rem;
+    color: #555;
+    margin-bottom: 0.2rem;
+  }
+  .filters select { width: 100%; padding: 0.4rem; }
+  #filter-status { font-size: 0.85rem; color: #666; margin-bottom: 0.5rem; }
+  #record-label { font-size: 0.85rem; color: #444; margin-bottom: 1rem; }
   details.prompt {
     margin-bottom: 1rem;
     padding: 0.6rem 0.8rem;
@@ -57,9 +70,22 @@
   <nav><a href="/">Accounting</a> | <a href="/static/tagging.html">Tagging</a></nav>
   <h1>Tokenria — Tagging</h1>
 
-  <div class="picker">
-    <select id="record-picker"></select>
+  <div class="filters">
+    <div>
+      <label for="filter-id">ID</label>
+      <select id="filter-id"></select>
+    </div>
+    <div>
+      <label for="filter-date">Date</label>
+      <select id="filter-date"></select>
+    </div>
+    <div>
+      <label for="filter-session">Session</label>
+      <select id="filter-session"></select>
+    </div>
   </div>
+  <div id="filter-status"></div>
+  <div id="record-label"></div>
 
   <details class="prompt" open>
     <summary>Prompt</summary>

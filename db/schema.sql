@@ -1,8 +1,11 @@
+-- All tables in this schema use UUIDv4 TEXT primary keys, not autoincrement
+-- integers -- keep new tables consistent with this.
 CREATE TABLE IF NOT EXISTS records (
-    id INTEGER PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     external_id TEXT UNIQUE,
     source TEXT NOT NULL,
     session_id TEXT,
+    session_name TEXT,
     model TEXT,
     timestamp TEXT NOT NULL,
     prompt_text TEXT,
@@ -17,10 +20,11 @@ CREATE TABLE IF NOT EXISTS records (
 
 CREATE INDEX IF NOT EXISTS idx_records_timestamp ON records(timestamp);
 CREATE INDEX IF NOT EXISTS idx_records_source ON records(source);
+CREATE INDEX IF NOT EXISTS idx_records_session_id ON records(session_id);
 
 CREATE TABLE IF NOT EXISTS tags (
-    id INTEGER PRIMARY KEY,
-    record_id INTEGER NOT NULL REFERENCES records(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY,
+    record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,
     span_start INTEGER NOT NULL,
     span_end INTEGER NOT NULL,
     used BOOLEAN NOT NULL,

@@ -43,6 +43,7 @@ def parse_session(path: Path) -> list[dict]:
     turn_model = None
     last_turn_entry = None
     skipped_sidechain_tokens = _new_totals()
+    session_title = None
 
     def flush_open_turn():
         nonlocal turn_totals, turn_model, last_turn_entry
@@ -63,6 +64,14 @@ def parse_session(path: Path) -> list[dict]:
 
     for entry in entries:
         entry_type = entry.get("type")
+
+        if entry_type == "ai-title":
+            # Claude Code re-emits this as the conversation's auto-generated
+            # title settles or shifts topic; the last one seen is the
+            # session's final name, applied retroactively to every record
+            # below once the whole file has been read.
+            session_title = entry.get("aiTitle", session_title)
+            continue
 
         if entry_type == "user":
             if _is_real_prompt(entry):
@@ -118,6 +127,9 @@ def parse_session(path: Path) -> list[dict]:
             session_id,
             skipped_sidechain_tokens,
         )
+
+    for record in records:
+        record["session_name"] = session_title
 
     return records
 
