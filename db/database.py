@@ -60,8 +60,10 @@ def insert_records(records: list[dict], db_path: Path = DEFAULT_DB_PATH) -> int:
                     id, external_id, source, session_id, session_name, model,
                     timestamp, prompt_text, response_text, input_tokens,
                     output_tokens, cache_read_tokens, cache_write_tokens,
-                    is_estimated, cost_usd
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    cache_write_1h_tokens, cache_write_5m_tokens,
+                    is_estimated, cost_usd, is_subagent, agent_type,
+                    agent_description
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(uuid.uuid4()),
@@ -77,14 +79,20 @@ def insert_records(records: list[dict], db_path: Path = DEFAULT_DB_PATH) -> int:
                     record["output_tokens"],
                     record["cache_read_tokens"],
                     record["cache_write_tokens"],
+                    record.get("cache_write_1h_tokens", 0),
+                    record.get("cache_write_5m_tokens", 0),
                     record["is_estimated"],
                     compute_cost(
                         record.get("model"),
                         record["input_tokens"],
                         record["output_tokens"],
                         record["cache_read_tokens"],
-                        record["cache_write_tokens"],
+                        record.get("cache_write_1h_tokens", 0),
+                        record.get("cache_write_5m_tokens", 0),
                     ),
+                    record.get("is_subagent", False),
+                    record.get("agent_type"),
+                    record.get("agent_description"),
                 ),
             )
             inserted += cursor.rowcount
@@ -110,4 +118,6 @@ def _external_id(record: dict) -> str | None:
     closing_entry_uuid = record.get("closing_entry_uuid")
     if closing_entry_uuid is None:
         return None
+    if record.get("is_subagent"):
+        return f"{record['source']}:subagent:{record['agent_id']}:{closing_entry_uuid}"
     return f"{record['source']}:{record.get('session_id')}:{closing_entry_uuid}"

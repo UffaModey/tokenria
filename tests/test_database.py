@@ -14,6 +14,8 @@ BASE_RECORD = {
     "output_tokens": 200,
     "cache_read_tokens": 1000,
     "cache_write_tokens": 500,
+    "cache_write_1h_tokens": 400,
+    "cache_write_5m_tokens": 100,
     "is_estimated": False,
     "closing_entry_uuid": "uuid-1",
 }
@@ -56,8 +58,12 @@ def test_insert_records_computes_external_id_and_cost(tmp_path):
     conn.close()
 
     assert row[0] == "claude_code:sess1:uuid-1"
-    # 100 * 2.00 + 200 * 10.00 + 500 * 2.50 + 1000 * 0.20 = 3450.00, all /1e6
-    assert row[1] == (100 * 2.00 + 200 * 10.00 + 500 * 2.50 + 1000 * 0.20) / 1_000_000
+    # 100 * 2.00 + 200 * 10.00 + 400 * 4.00 + 100 * 2.50 + 1000 * 0.20, all /1e6
+    assert (
+        row[1]
+        == (100 * 2.00 + 200 * 10.00 + 400 * 4.00 + 100 * 2.50 + 1000 * 0.20)
+        / 1_000_000
+    )
     assert row[2] == 0
 
 
@@ -160,6 +166,73 @@ def test_insert_records_writes_and_backfills_session_name(tmp_path):
     }
     conn.close()
     assert names == {"Fix parse_session's loop bound"}
+
+
+def test_insert_records_defaults_is_subagent_false_when_key_absent(tmp_path):
+    db_path = tmp_path / "tokenria.db"
+    init_db(db_path)
+
+    insert_records([BASE_RECORD], db_path)
+
+    conn = get_connection(db_path)
+    row = conn.execute(
+        "SELECT is_subagent, agent_type, agent_description FROM records"
+    ).fetchone()
+    conn.close()
+
+    assert row == (0, None, None)
+
+
+def test_insert_records_persists_subagent_fields_and_uses_subagent_external_id(
+    tmp_path,
+):
+    db_path = tmp_path / "tokenria.db"
+    init_db(db_path)
+
+    subagent_record = {
+        **BASE_RECORD,
+        "closing_entry_uuid": "uuid-3",
+        "is_subagent": True,
+        "agent_type": "general-purpose",
+        "agent_description": "Survey subdirectories",
+        "agent_id": "a9b9a92a1c",
+    }
+    insert_records([subagent_record], db_path)
+
+    conn = get_connection(db_path)
+    row = conn.execute(
+        "SELECT external_id, is_subagent, agent_type, agent_description "
+        "FROM records WHERE agent_type = 'general-purpose'"
+    ).fetchone()
+    conn.close()
+
+    assert row[0] == "claude_code:subagent:a9b9a92a1c:uuid-3"
+    assert row[1] == 1
+    assert row[2] == "general-purpose"
+    assert row[3] == "Survey subdirectories"
+
+
+def test_subagent_and_main_thread_records_in_same_session_dont_collide(tmp_path):
+    db_path = tmp_path / "tokenria.db"
+    init_db(db_path)
+
+    main_thread_record = {**BASE_RECORD, "closing_entry_uuid": "same-uuid"}
+    subagent_record = {
+        **BASE_RECORD,
+        "closing_entry_uuid": "same-uuid",
+        "is_subagent": True,
+        "agent_type": "general-purpose",
+        "agent_description": "Survey subdirectories",
+        "agent_id": "a9b9a92a1c",
+    }
+
+    inserted = insert_records([main_thread_record, subagent_record], db_path)
+    assert inserted == 2
+
+    conn = get_connection(db_path)
+    count = conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]
+    conn.close()
+    assert count == 2
 
 
 def test_deleting_a_record_cascades_to_its_tags(tmp_path):

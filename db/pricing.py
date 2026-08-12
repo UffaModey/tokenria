@@ -1,23 +1,28 @@
 """Static per-model pricing, used to compute `cost_usd` once at insert time.
 
-Input/output rates below are user-confirmed. Anthropic doesn't publish separate
-cache rates for every model, so cache_write/cache_read are derived from each
-model's input rate using Anthropic's standard 5m-ephemeral-cache multipliers
-(1.25x input for a cache write, 0.1x input for a cache read) rather than being
-independently confirmed per model.
+All five rates per model (input, output, 1h cache write, 5m cache write, cache
+read) are confirmed directly against Anthropic's own published pricing page
+(checked 2026-08-12) rather than derived or assumed. Anthropic bills a cache
+write at one of two tiers depending on the requested TTL -- 2x input for a
+1-hour cache, 1.25x input for a 5-minute cache -- which cost meaningfully
+different amounts; real ingested usage shows the 1-hour tier is the dominant
+one (86% of cache-write tokens across every session on this machine), so
+collapsing both into a single derived rate had been undercounting cache-write
+cost by roughly 50%.
+
+`inference_geo` (a 1.1x multiplier for US-only routing) and fast-mode pricing
+are known additional multipliers Anthropic applies in some cases. Neither is
+modeled here, since no ingested usage currently uses them -- add support if
+that changes.
 """
 
-
-def _with_standard_cache_rates(input_rate: float, output_rate: float) -> tuple:
-    return (input_rate, output_rate, input_rate * 1.25, input_rate * 0.1)
-
-
-# model_name: (input $/M tok, output $/M tok, cache_write $/M tok, cache_read $/M tok)
+# model_name: (input, output, cache_write_1h, cache_write_5m, cache_read), all $/M tok
 PRICING = {
-    "claude-haiku-4-5": _with_standard_cache_rates(1.00, 5.00),
-    "claude-sonnet-5": _with_standard_cache_rates(2.00, 10.00),
-    "claude-opus-5": _with_standard_cache_rates(5.00, 25.00),
-    "claude-fable-5": _with_standard_cache_rates(10.00, 50.00),
+    "claude-haiku-4-5": (1.00, 5.00, 2.00, 1.25, 0.10),
+    "claude-sonnet-5": (2.00, 10.00, 4.00, 2.50, 0.20),
+    "claude-opus-5": (5.00, 25.00, 10.00, 6.25, 0.50),
+    "claude-fable-5": (10.00, 50.00, 20.00, 12.50, 1.00),
+    "claude-sonnet-4-6": (3.00, 15.00, 6.00, 3.75, 0.30),
 }
 
 
@@ -26,7 +31,8 @@ def compute_cost(
     input_tokens: int,
     output_tokens: int,
     cache_read_tokens: int,
-    cache_write_tokens: int,
+    cache_write_1h_tokens: int,
+    cache_write_5m_tokens: int,
 ) -> float | None:
     """Return cost in USD, or None if `model` has no entry in PRICING.
 
@@ -35,10 +41,17 @@ def compute_cost(
     rates = PRICING.get(model)
     if rates is None:
         return None
-    input_rate, output_rate, cache_write_rate, cache_read_rate = rates
+    (
+        input_rate,
+        output_rate,
+        cache_write_1h_rate,
+        cache_write_5m_rate,
+        cache_read_rate,
+    ) = rates
     return (
         input_tokens * input_rate
         + output_tokens * output_rate
-        + cache_write_tokens * cache_write_rate
+        + cache_write_1h_tokens * cache_write_1h_rate
+        + cache_write_5m_tokens * cache_write_5m_rate
         + cache_read_tokens * cache_read_rate
     ) / 1_000_000
