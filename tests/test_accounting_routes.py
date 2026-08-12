@@ -119,3 +119,157 @@ def test_list_records_pagination_and_source_filter(client):
     filtered = test_client.get("/api/records?source=claude_code").json()
     assert all(row["source"] == "claude_code" for row in filtered)
     assert all(isinstance(row["is_estimated"], bool) for row in filtered)
+
+
+def test_summary_sessions_groups_and_splits_human_subagent(client):
+    test_client, db_path = client
+    insert_records(
+        [
+            _record(
+                session_id="sess1",
+                timestamp="2026-01-01T10:00:00Z",
+                closing_entry_uuid="u1",
+                model="claude-sonnet-5",
+            ),
+            _record(
+                session_id="sess1",
+                timestamp="2026-01-01T11:00:00Z",
+                closing_entry_uuid="u2",
+                is_subagent=True,
+                agent_id="a1",
+                agent_type="Explore",
+                agent_description="find the config file",
+                model="claude-haiku-4-5",
+            ),
+            _record(
+                session_id="sess2",
+                timestamp="2026-01-01T12:00:00Z",
+                closing_entry_uuid="u3",
+            ),
+        ],
+        db_path,
+    )
+
+    rows = test_client.get(
+        "/api/records/summary/2026-01-01/sessions?group_by=day"
+    ).json()
+
+    by_session = {row["session_id"]: row for row in rows}
+    assert by_session["sess1"]["record_count"] == 2
+    assert by_session["sess1"]["human_count"] == 1
+    assert by_session["sess1"]["subagent_count"] == 1
+    assert set(by_session["sess1"]["models"]) == {"claude-sonnet-5", "claude-haiku-4-5"}
+    assert by_session["sess2"]["record_count"] == 1
+    assert by_session["sess2"]["subagent_count"] == 0
+
+
+def test_summary_sessions_scopes_to_period(client):
+    test_client, db_path = client
+    insert_records(
+        [
+            _record(
+                session_id="sess1",
+                timestamp="2026-01-01T23:00:00Z",
+                closing_entry_uuid="u1",
+                input_tokens=10,
+            ),
+            _record(
+                session_id="sess1",
+                timestamp="2026-01-02T01:00:00Z",
+                closing_entry_uuid="u2",
+                input_tokens=1000,
+            ),
+        ],
+        db_path,
+    )
+
+    day_one = test_client.get(
+        "/api/records/summary/2026-01-01/sessions?group_by=day"
+    ).json()
+    day_two = test_client.get(
+        "/api/records/summary/2026-01-02/sessions?group_by=day"
+    ).json()
+
+    assert day_one[0]["record_count"] == 1
+    assert day_one[0]["input_tokens"] == 10
+    assert day_two[0]["record_count"] == 1
+    assert day_two[0]["input_tokens"] == 1000
+
+
+def test_summary_sessions_cost_null_when_model_unpriced(client):
+    test_client, db_path = client
+    insert_records(
+        [
+            _record(
+                session_id="sess1",
+                timestamp="2026-01-01T10:00:00Z",
+                closing_entry_uuid="u1",
+                model="totally-unknown-model",
+            ),
+        ],
+        db_path,
+    )
+
+    rows = test_client.get(
+        "/api/records/summary/2026-01-01/sessions?group_by=day"
+    ).json()
+
+    assert rows[0]["cost_usd"] is None
+
+
+def test_list_records_filters_by_session_id_and_period(client):
+    test_client, db_path = client
+    insert_records(
+        [
+            _record(
+                session_id="sess1",
+                timestamp="2026-01-01T10:00:00Z",
+                closing_entry_uuid="u1",
+            ),
+            _record(
+                session_id="sess1",
+                timestamp="2026-01-02T10:00:00Z",
+                closing_entry_uuid="u2",
+            ),
+            _record(
+                session_id="sess2",
+                timestamp="2026-01-01T10:00:00Z",
+                closing_entry_uuid="u3",
+            ),
+        ],
+        db_path,
+    )
+
+    rows = test_client.get(
+        "/api/records?session_id=sess1&group_by=day&period=2026-01-01"
+    ).json()
+
+    assert len(rows) == 1
+    assert rows[0]["session_id"] == "sess1"
+    assert rows[0]["timestamp"] == "2026-01-01T10:00:00Z"
+
+
+def test_list_records_orders_ascending_when_session_id_given(client):
+    test_client, db_path = client
+    insert_records(
+        [
+            _record(
+                session_id="sess1",
+                timestamp="2026-01-01T10:00:00Z",
+                closing_entry_uuid="u1",
+            ),
+            _record(
+                session_id="sess1",
+                timestamp="2026-01-01T12:00:00Z",
+                closing_entry_uuid="u2",
+            ),
+        ],
+        db_path,
+    )
+
+    rows = test_client.get("/api/records?session_id=sess1").json()
+
+    assert [row["timestamp"] for row in rows] == [
+        "2026-01-01T10:00:00Z",
+        "2026-01-01T12:00:00Z",
+    ]

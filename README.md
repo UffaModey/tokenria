@@ -62,7 +62,7 @@ Every ingested record is tagged as either *exact* (real provider usage data) or 
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install fastapi uvicorn tiktoken python-dotenv pytest ruff httpx2
+pip install fastapi uvicorn tiktoken python-dotenv pytest ruff httpx
 ```
 
 Ingest your real Claude Code usage data (parses every session under `~/.claude/projects/**/*.jsonl`, safe to re-run any time):

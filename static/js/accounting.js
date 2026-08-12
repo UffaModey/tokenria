@@ -6,6 +6,7 @@ const CATEGORIES = [
 ];
 
 let chart = null;
+let currentGroupBy = "day";
 
 function combineBySourcelessPeriod(rows) {
   // Collapse across `source` so the chart shows structural breakdown per
@@ -68,6 +69,10 @@ function renderChart(rows) {
     data: { labels: periods, datasets },
     options: {
       responsive: true,
+      onClick: (_event, elements) => {
+        if (elements.length === 0) return;
+        openSessionsPanel(periods[elements[0].index]);
+      },
       scales: {
         x: { stacked: true },
         y: { stacked: true, beginAtZero: true, title: { display: true, text: "Tokens" } },
@@ -113,13 +118,14 @@ function renderTable(rows) {
       <td>${row.output_tokens.toLocaleString()}</td>
       <td>${row.cost_usd === null ? "—" : `$${row.cost_usd.toFixed(2)}`}</td>
     `;
+    tr.addEventListener("click", () => openSessionsPanel(row.period));
     tbody.appendChild(tr);
   }
 }
 
 async function loadAndRender() {
-  const groupBy = document.getElementById("group-by").value;
-  const response = await fetch(`/api/records/summary?group_by=${groupBy}`);
+  currentGroupBy = document.getElementById("group-by").value;
+  const response = await fetch(`/api/records/summary?group_by=${currentGroupBy}`);
   const rawRows = await response.json();
   const rows = combineBySourcelessPeriod(rawRows);
 
@@ -128,5 +134,178 @@ async function loadAndRender() {
   renderTable(rows);
 }
 
-document.getElementById("group-by").addEventListener("change", loadAndRender);
-loadAndRender();
+function escapeHtml(value) {
+  const escapes = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => escapes[ch]);
+}
+
+// Consecutive records sharing session_id + prompt_text are one human turn split
+// across several closing text blocks by stage 1's adapter (see CLAUDE.md's stage 4
+// notes) -- this is a display-only workaround, not an ingestion-level fix.
+function collapseFragments(records) {
+  const groups = [];
+  for (const record of records) {
+    const last = groups[groups.length - 1];
+    if (
+      last &&
+      last.session_id === record.session_id &&
+      last.prompt_text === record.prompt_text
+    ) {
+      last.fragments.push(record);
+    } else {
+      groups.push({
+        session_id: record.session_id,
+        prompt_text: record.prompt_text,
+        is_subagent: record.is_subagent,
+        agent_type: record.agent_type,
+        agent_description: record.agent_description,
+        model: record.model,
+        timestamp: record.timestamp,
+        fragments: [record],
+      });
+    }
+  }
+  return groups.map((group) => {
+    const totals = {
+      input_tokens: 0,
+      cache_write_tokens: 0,
+      cache_read_tokens: 0,
+      output_tokens: 0,
+      cost_usd: null,
+    };
+    for (const fragment of group.fragments) {
+      totals.input_tokens += fragment.input_tokens;
+      totals.cache_write_tokens += fragment.cache_write_tokens;
+      totals.cache_read_tokens += fragment.cache_read_tokens;
+      totals.output_tokens += fragment.output_tokens;
+      if (fragment.cost_usd !== null) {
+        totals.cost_usd = (totals.cost_usd ?? 0) + fragment.cost_usd;
+      }
+    }
+    return { ...group, totals };
+  });
+}
+
+function closePanel() {
+  document.getElementById("drilldown-panel").style.display = "none";
+}
+
+function agentBadge(record) {
+  if (!record.is_subagent) return "";
+  const description = escapeHtml(record.agent_description || "");
+  return `<span class="agent-badge" title="${description}">${escapeHtml(record.agent_type || "subagent")}</span>`;
+}
+
+async function openSessionsPanel(period) {
+  const response = await fetch(
+    `/api/records/summary/${encodeURIComponent(period)}/sessions?group_by=${currentGroupBy}`,
+  );
+  const sessions = await response.json();
+  renderSessionsView(period, sessions);
+  document.getElementById("drilldown-panel").style.display = "block";
+}
+
+function renderSessionsView(period, sessions) {
+  const rows = sessions
+    .map((session) => {
+      const name = escapeHtml(session.session_name || `${session.session_id.slice(0, 8)}…`);
+      return `
+        <div class="session-row" data-session-id="${escapeHtml(session.session_id)}">
+          <strong>${name}</strong>
+          <div class="meta">
+            ${session.record_count} record(s) — ${session.human_count} human /
+            ${session.subagent_count} subagent · ${escapeHtml(session.models.join(", "))}
+          </div>
+          <div class="meta">
+            input ${session.input_tokens.toLocaleString()} · cache write
+            ${session.cache_write_tokens.toLocaleString()} · cache read
+            ${session.cache_read_tokens.toLocaleString()} · output
+            ${session.output_tokens.toLocaleString()} ·
+            ${session.cost_usd === null ? "cost unknown" : `$${session.cost_usd.toFixed(2)}`}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  document.getElementById("panel-content").innerHTML = `
+    <h2>Sessions — ${escapeHtml(period)}</h2>
+    ${rows || "<p>No sessions in this period.</p>"}
+  `;
+
+  for (const el of document.querySelectorAll(".session-row")) {
+    el.addEventListener("click", () => openSessionPrompts(period, el.dataset.sessionId));
+  }
+}
+
+async function openSessionPrompts(period, sessionId) {
+  const response = await fetch(
+    `/api/records?session_id=${encodeURIComponent(sessionId)}` +
+      `&group_by=${currentGroupBy}&period=${encodeURIComponent(period)}&limit=500`,
+  );
+  const records = await response.json();
+  renderPromptsView(period, collapseFragments(records));
+}
+
+function renderPromptsView(period, groups) {
+  const groupsHtml = groups
+    .map((group, index) => {
+      const fragmentsHtml = group.fragments
+        .map(
+          (fragment) => `
+            <div class="fragment">
+              <div class="meta">
+                ${fragment.model || "unknown model"} ·
+                ${fragment.cost_usd === null ? "cost unknown" : `$${fragment.cost_usd.toFixed(2)}`}
+                · in ${fragment.input_tokens.toLocaleString()} · cache write
+                ${fragment.cache_write_tokens.toLocaleString()} · cache read
+                ${fragment.cache_read_tokens.toLocaleString()} · out
+                ${fragment.output_tokens.toLocaleString()}
+              </div>
+              <div>${escapeHtml((fragment.response_text || "").slice(0, 300))}${
+                (fragment.response_text || "").length > 300 ? "…" : ""
+              }</div>
+            </div>
+          `,
+        )
+        .join("");
+
+      return `
+        <details class="prompt-group">
+          <summary>
+            ${escapeHtml((group.prompt_text || "").slice(0, 120))}${agentBadge(group)}
+            <div class="meta">
+              ${group.timestamp} ·
+              ${group.totals.cost_usd === null ? "cost unknown" : `$${group.totals.cost_usd.toFixed(2)}`}
+              (${group.fragments.length} fragment${group.fragments.length > 1 ? "s" : ""})
+            </div>
+          </summary>
+          ${fragmentsHtml}
+        </details>
+      `;
+    })
+    .join("");
+
+  document.getElementById("panel-content").innerHTML = `
+    <button class="panel-back" id="panel-back">&larr; back to sessions</button>
+    <h2>Prompts — ${escapeHtml(period)}</h2>
+    ${groupsHtml || "<p>No prompts for this session in this period.</p>"}
+  `;
+
+  document
+    .getElementById("panel-back")
+    .addEventListener("click", () => openSessionsPanel(period));
+}
+
+// Guarded so this file can be `require()`d headlessly (see
+// tests/test_accounting_js.mjs) to unit-test collapseFragments without a
+// real browser/Chart.js/fetch environment.
+if (typeof window !== "undefined") {
+  document.getElementById("group-by").addEventListener("change", loadAndRender);
+  document.getElementById("panel-close").addEventListener("click", closePanel);
+  loadAndRender();
+}
+
+if (typeof module !== "undefined") {
+  module.exports = { collapseFragments };
+}
