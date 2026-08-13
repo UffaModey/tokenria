@@ -14,8 +14,13 @@ CREATE TABLE IF NOT EXISTS records (
     output_tokens INTEGER NOT NULL DEFAULT 0,
     cache_read_tokens INTEGER NOT NULL DEFAULT 0,
     cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_1h_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_5m_tokens INTEGER NOT NULL DEFAULT 0,
     is_estimated BOOLEAN NOT NULL,
-    cost_usd REAL
+    cost_usd REAL,
+    is_subagent BOOLEAN NOT NULL DEFAULT 0,
+    agent_type TEXT,
+    agent_description TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_records_timestamp ON records(timestamp);

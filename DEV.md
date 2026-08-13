@@ -8,7 +8,7 @@ tagging view). This is how to run what exists today.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install fastapi uvicorn tiktoken python-dotenv pytest ruff httpx2
+pip install fastapi uvicorn tiktoken python-dotenv pytest ruff httpx
 ```
 
 Note: don't use `pip install -e .` — this repo has multiple top-level packages (`app`, `db`,
@@ -58,9 +58,9 @@ ruff format .   # format
   Claude Code session ended mid-tool-loop (no closing reply) are excluded, since there's nothing
   to tag.
 - Cost (`cost_usd`) is only shown for models in `db/pricing.py`'s `PRICING` table
-  (`claude-haiku-4-5`, `claude-sonnet-5`, `claude-opus-5`, `claude-fable-5`). Any other model
-  (e.g. `claude-sonnet-4-6`) shows as unknown cost rather than a guessed number — that's
-  deliberate, not a bug.
+  (`claude-haiku-4-5`, `claude-sonnet-5`, `claude-opus-5`, `claude-fable-5`,
+  `claude-sonnet-4-6`). Any model not in that table shows as unknown cost rather than a guessed
+  number — that's deliberate, not a bug.
 - If `db/tokenria.db` ever gets into a state you want to throw away, just delete the file —
   `python main.py` recreates an empty schema on startup, and re-running the ingest step in step 2
   repopulates it from your real Claude Code history.
