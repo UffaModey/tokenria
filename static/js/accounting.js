@@ -297,13 +297,36 @@ function renderPromptsView(period, groups) {
     .addEventListener("click", () => openSessionsPanel(period));
 }
 
+// Lets the analysis view (stage 3.1) link a specific period/session straight
+// into this drill-down panel instead of duplicating it -- e.g.
+// /?period=2026-08-05&group_by=day&session_id=sess123.
+async function openFromUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  const period = params.get("period");
+  if (!period) return;
+
+  const groupBy = params.get("group_by");
+  if (groupBy) {
+    document.getElementById("group-by").value = groupBy;
+    currentGroupBy = groupBy;
+  }
+
+  const sessionId = params.get("session_id");
+  if (sessionId) {
+    await openSessionPrompts(period, sessionId);
+    document.getElementById("drilldown-panel").style.display = "block";
+  } else {
+    await openSessionsPanel(period);
+  }
+}
+
 // Guarded so this file can be `require()`d headlessly (see
 // tests/test_accounting_js.mjs) to unit-test collapseFragments without a
 // real browser/Chart.js/fetch environment.
 if (typeof window !== "undefined") {
   document.getElementById("group-by").addEventListener("change", loadAndRender);
   document.getElementById("panel-close").addEventListener("click", closePanel);
-  loadAndRender();
+  loadAndRender().then(openFromUrlParams);
 }
 
 if (typeof module !== "undefined") {
