@@ -43,6 +43,7 @@ Tokenria does not reveal the internal mechanics of how a closed model (Claude, G
 
 - 📊 **Token Accounting** — parses Claude Code session transcripts (exact, per-turn token counts, no export step required), breaking usage down into new input / cache write / cache read / output, rolled up by day, week, or month with cost attached. Answers *"where is my money structurally going."* Ingesting raw Anthropic/OpenAI API response objects is the same category of source and is next on the [roadmap](#roadmap).
 - ✍️ **Manual Value Tagging** — click through any response's chunks and mark each one used or discarded. Produces an adoption ratio (tokens kept / tokens generated) per response, tracked over time — the honest signal of value, based entirely on your own judgment, never an automated guess.
+- 📈 **Analysis** — a third view over the same data: token-category and cache-read trends over time, repeated-prompt detection ranked by cost, per-model and human-vs-subagent cost drivers, most-expensive periods/sessions, and a handful of rule-based recommendations (e.g. flagging a repeated prompt that duplicates an existing skill). Links straight into the accounting drill-down for any period or session it surfaces.
 - 🤖 **Optional Auto-Annotation** *(planned)* — a cheap secondary LLM pass that pre-highlights likely-useful vs. likely-filler chunks before your manual review. Always editable, always labeled as a suggestion, never a substitute for your own call.
 
 Every ingested record is tagged as either *exact* (real provider usage data) or *estimated* (locally tokenized pasted text), so accounting reports never blur the two.
@@ -77,7 +78,7 @@ Start the server:
 python main.py
 ```
 
-Then open **http://127.0.0.1:8000** for the accounting view, and **http://127.0.0.1:8000/static/tagging.html** for tagging. Bound to localhost only, deliberately — this is a local, single-user tool with no auth.
+Then open **http://127.0.0.1:8000** for the accounting view, **http://127.0.0.1:8000/static/tagging.html** for tagging, and **http://127.0.0.1:8000/static/analysis.html** for trends, cost drivers, and recommendations. Bound to localhost only, deliberately — this is a local, single-user tool with no auth.
 
 See [DEV.md](DEV.md) for the full walkthrough, including tests and linting.
 
@@ -94,6 +95,7 @@ See [DEV.md](DEV.md) for the full walkthrough, including tests and linting.
 - [x] Shared SQLite schema for usage records
 - [x] Accounting view — structural cost/token breakdown, charted
 - [x] Tagging view — manual chunk tagging, adoption ratio
+- [x] Analysis view — trends, cost drivers, rule-based recommendations
 - [ ] Generic API-response adapter (raw Anthropic/OpenAI response objects)
 - [ ] Text-paste input path (estimated token counts via `tiktoken`)
 - [ ] Auto-annotation overlay (LLM-assisted tag suggestions)
