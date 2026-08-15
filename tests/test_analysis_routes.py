@@ -231,6 +231,100 @@ def test_repeated_prompts_model_breakdown_sums_to_total_cost(client):
     assert sum(m["cost_usd"] for m in row["models"]) == pytest.approx(row["total_cost"])
 
 
+def test_repeated_prompts_excludes_synthetic_model(client):
+    test_client, db_path = client
+    insert_records(
+        [
+            _record(
+                session_id="sess1",
+                timestamp="2026-01-01T10:00:00Z",
+                closing_entry_uuid="u1",
+                prompt_text="Continue from where you left off.",
+                model="<synthetic>",
+            ),
+            _record(
+                session_id="sess2",
+                timestamp="2026-01-02T10:00:00Z",
+                closing_entry_uuid="u2",
+                prompt_text="Continue from where you left off.",
+                model="<synthetic>",
+            ),
+        ],
+        db_path,
+    )
+
+    rows = test_client.get(
+        "/api/analysis/repeated-prompts?min_occurrences=2&min_length=20"
+    ).json()
+
+    assert rows == []
+
+
+def test_prompt_instances_returns_every_occurrence_in_chronological_order(client):
+    test_client, db_path = client
+    insert_records(
+        [
+            _record(
+                session_id="sess2",
+                timestamp="2026-01-02T10:00:00Z",
+                closing_entry_uuid="u2",
+                prompt_text="a shared prompt",
+                model="claude-sonnet-5",
+                response_text="second response",
+            ),
+            _record(
+                session_id="sess1",
+                timestamp="2026-01-01T10:00:00Z",
+                closing_entry_uuid="u1",
+                prompt_text="a shared prompt",
+                model="claude-fable-5",
+                response_text="first response",
+            ),
+            _record(
+                session_id="sess3",
+                timestamp="2026-01-03T10:00:00Z",
+                closing_entry_uuid="u3",
+                prompt_text="a different prompt",
+                model="claude-sonnet-5",
+                response_text="unrelated",
+            ),
+        ],
+        db_path,
+    )
+
+    rows = test_client.get(
+        "/api/analysis/repeated-prompts/instances",
+        params={"prompt_text": "a shared prompt"},
+    ).json()
+
+    assert [r["response_text"] for r in rows] == ["first response", "second response"]
+    assert rows[0]["session_id"] == "sess1"
+    assert rows[0]["model"] == "claude-fable-5"
+
+
+def test_prompt_instances_excludes_synthetic_model(client):
+    test_client, db_path = client
+    insert_records(
+        [
+            _record(
+                session_id="sess1",
+                timestamp="2026-01-01T10:00:00Z",
+                closing_entry_uuid="u1",
+                prompt_text="Continue from where you left off.",
+                model="<synthetic>",
+            ),
+        ],
+        db_path,
+    )
+
+    rows = test_client.get(
+        "/api/analysis/repeated-prompts/instances",
+        params={"prompt_text": "Continue from where you left off."},
+    ).json()
+
+    assert rows == []
+
+
 def test_cost_drivers_category_dollars_match_hand_calc(client):
     test_client, db_path = client
     insert_records(

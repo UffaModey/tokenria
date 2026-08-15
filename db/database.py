@@ -13,6 +13,14 @@ from db.pricing import compute_cost
 DEFAULT_DB_PATH = Path(__file__).parent / "tokenria.db"
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
+# Claude Code itself writes this placeholder `message.model` value for
+# assistant-shaped transcript entries where no real model call happened (an
+# auth failure, a dropped connection, an interrupted/no-op "continue" turn --
+# `usage` on these is always all-zero). Not a real model, so accounting/
+# analysis queries exclude it outright rather than surfacing it as an
+# "unknown cost" model to add pricing for.
+SYNTHETIC_MODEL = "<synthetic>"
+
 
 def get_connection(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)

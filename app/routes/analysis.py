@@ -12,7 +12,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 
-from db.database import DEFAULT_DB_PATH, get_connection
+from db.database import DEFAULT_DB_PATH, SYNTHETIC_MODEL, get_connection
 from db.pricing import PRICING
 
 router = APIRouter()
@@ -75,9 +75,11 @@ def _fetch_period_model_totals(
             SUM(cache_write_5m_tokens) AS cache_write_5m_tokens,
             SUM(cost_usd) AS cost_usd
         FROM records
+        WHERE model IS NOT :synthetic_model
         GROUP BY period, model
         ORDER BY period
-        """
+        """,
+        {"synthetic_model": SYNTHETIC_MODEL},
     ).fetchall()
 
 
@@ -92,9 +94,11 @@ def _trends_data(conn: sqlite3.Connection, group_by: str) -> dict:
             SUM(cache_read_tokens) AS cache_read_tokens,
             SUM(output_tokens) AS output_tokens
         FROM records
+        WHERE model IS NOT :synthetic_model
         GROUP BY period
         ORDER BY period
-        """
+        """,
+        {"synthetic_model": SYNTHETIC_MODEL},
     ).fetchall()
 
     by_period = []
@@ -126,9 +130,11 @@ def _trends_data(conn: sqlite3.Connection, group_by: str) -> dict:
             COUNT(*) AS record_count,
             SUM(cost_usd) AS cost_usd
         FROM records
+        WHERE model IS NOT :synthetic_model
         GROUP BY period, model
         ORDER BY period
-        """
+        """,
+        {"synthetic_model": SYNTHETIC_MODEL},
     ).fetchall()
     by_period_model = [
         {
@@ -155,11 +161,16 @@ def _repeated_prompts_data(
             SUM(cost_usd) AS total_cost
         FROM records
         WHERE prompt_text IS NOT NULL AND LENGTH(prompt_text) >= :min_length
+          AND model IS NOT :synthetic_model
         GROUP BY prompt_text
         HAVING COUNT(DISTINCT session_id) >= :min_occurrences
         ORDER BY total_cost DESC
         """,
-        {"min_length": min_length, "min_occurrences": min_occurrences},
+        {
+            "min_length": min_length,
+            "min_occurrences": min_occurrences,
+            "synthetic_model": SYNTHETIC_MODEL,
+        },
     ).fetchall()
 
     # Per-model cost within each qualifying prompt -- these sum back to that
@@ -174,11 +185,12 @@ def _repeated_prompts_data(
             SELECT prompt_text, model, SUM(cost_usd) AS cost_usd
             FROM records
             WHERE prompt_text IN ({placeholders})
+              AND model IS NOT ?
             GROUP BY prompt_text, model
             HAVING cost_usd IS NOT NULL
             ORDER BY cost_usd DESC
             """,
-            prompt_texts,
+            [*prompt_texts, SYNTHETIC_MODEL],
         ).fetchall()
         for row in prompt_model_rows:
             models_by_prompt[row["prompt_text"]].append(
@@ -264,8 +276,10 @@ def _cost_drivers_data(conn: sqlite3.Connection, group_by: str) -> dict:
             SUM(cost_usd) AS cost_usd,
             COUNT(*) AS record_count
         FROM records
+        WHERE model IS NOT :synthetic_model
         GROUP BY is_subagent
-        """
+        """,
+        {"synthetic_model": SYNTHETIC_MODEL},
     ).fetchall()
     human_vs_subagent_split = {
         "human_cost_usd": next(
@@ -285,11 +299,13 @@ def _cost_drivers_data(conn: sqlite3.Connection, group_by: str) -> dict:
             SUM(cost_usd) AS cost_usd
         FROM records
         WHERE session_id IS NOT NULL
+          AND model IS NOT :synthetic_model
         GROUP BY session_id
         HAVING cost_usd IS NOT NULL
         ORDER BY cost_usd DESC
         LIMIT 10
-        """
+        """,
+        {"synthetic_model": SYNTHETIC_MODEL},
     ).fetchall()
 
     # Per-model cost within each of those top sessions -- e.g. "$115 total:
@@ -303,11 +319,12 @@ def _cost_drivers_data(conn: sqlite3.Connection, group_by: str) -> dict:
             SELECT session_id, model, SUM(cost_usd) AS cost_usd
             FROM records
             WHERE session_id IN ({placeholders})
+              AND model IS NOT ?
             GROUP BY session_id, model
             HAVING cost_usd IS NOT NULL
             ORDER BY cost_usd DESC
             """,
-            top_session_ids,
+            [*top_session_ids, SYNTHETIC_MODEL],
         ).fetchall()
         for row in session_model_rows:
             models_by_session[row["session_id"]].append(
@@ -324,8 +341,10 @@ def _cost_drivers_data(conn: sqlite3.Connection, group_by: str) -> dict:
             ) AS token_count
         FROM records
         WHERE cost_usd IS NULL
+          AND model IS NOT :synthetic_model
         GROUP BY model
-        """
+        """,
+        {"synthetic_model": SYNTHETIC_MODEL},
     ).fetchall()
 
     return {
@@ -505,6 +524,16 @@ def get_repeated_prompts(
     conn.row_factory = sqlite3.Row
     try:
         return _repeated_prompts_data(conn, min_occurrences, min_length)
+    finally:
+        conn.close()
+
+
+@router.get("/analysis/repeated-prompts/instances")
+def get_prompt_instances(prompt_text: str, db_path: Path = Depends(get_db_path)):
+    conn = get_connection(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        return _prompt_instances_data(conn, prompt_text)
     finally:
         conn.close()
 

@@ -101,7 +101,7 @@ const repeatedPromptsList = createPaginatedList(
   "repeated-prompts-pagination",
   (row) => `
     <tr>
-      <td style="text-align: left;">${escapeHtml((row.prompt_text || "").slice(0, 100))}${(row.prompt_text || "").length > 100 ? "…" : ""}</td>
+      <td style="text-align: left;" class="prompt-cell" data-prompt="${escapeHtml(row.prompt_text || "")}">${escapeHtml((row.prompt_text || "").slice(0, 100))}${(row.prompt_text || "").length > 100 ? "…" : ""}</td>
       <td>${row.session_count}</td>
       <td>${row.record_count}</td>
       <td style="text-align: left;" class="model-breakdown">${formatModelBreakdown(row.models)}</td>
@@ -118,7 +118,7 @@ const topSessionsList = createPaginatedList(
     const name = escapeHtml(row.session_name || `${row.session_id.slice(0, 8)}…`);
     return `
       <tr>
-        <td style="text-align: left;"><a class="drilldown-link" href="${sessionLink(row.period, row.session_id)}">${name}</a></td>
+        <td style="text-align: left;" class="session-cell" data-session-id="${escapeHtml(row.session_id)}">${name}</td>
         <td style="text-align: left;" class="model-breakdown">${formatModelBreakdown(row.models)}</td>
         <td>${formatCost(row.cost_usd)}</td>
       </tr>
@@ -218,12 +218,205 @@ function renderHumanSubagentTable(split) {
   `;
 }
 
-function periodLink(period) {
-  return `/?period=${encodeURIComponent(period)}&group_by=${encodeURIComponent(currentGroupBy)}`;
+function agentBadgeText(instance) {
+  return instance.is_subagent ? ` · subagent (${escapeHtml(instance.agent_type || "unknown")})` : "";
 }
 
-function sessionLink(period, sessionId) {
-  return `${periodLink(period)}&session_id=${encodeURIComponent(sessionId)}`;
+function agentBadge(record) {
+  if (!record.is_subagent) return "";
+  const description = escapeHtml(record.agent_description || "");
+  return `<span class="agent-badge" title="${description}">${escapeHtml(record.agent_type || "subagent")}</span>`;
+}
+
+function renderPromptInstancesPanel(instances) {
+  const rows = instances
+    .map((inst) => {
+      const sessionName = escapeHtml(
+        inst.session_name || `${inst.session_id.slice(0, 8)}…`,
+      );
+      return `
+        <div class="prompt-instance">
+          <div class="meta">
+            ${escapeHtml(inst.timestamp)} · ${sessionName} · ${escapeHtml(inst.model || "unknown model")} ·
+            ${formatCost(inst.cost_usd)}${agentBadgeText(inst)}
+          </div>
+          <div class="meta">
+            in ${inst.input_tokens.toLocaleString()} · cache write ${inst.cache_write_tokens.toLocaleString()} ·
+            cache read ${inst.cache_read_tokens.toLocaleString()} · out ${inst.output_tokens.toLocaleString()}
+          </div>
+          <div class="field-label">Prompt</div>
+          <div class="field-value">${escapeHtml(inst.prompt_text || "")}</div>
+          <div class="field-label">Response</div>
+          <div class="field-value">${escapeHtml(inst.response_text || "")}</div>
+        </div>
+      `;
+    })
+    .join("");
+
+  document.getElementById("detail-panel-title").innerHTML =
+    `<h2>Instances <span class="prompt-count">(${instances.length})</span></h2>`;
+  document.getElementById("detail-panel-controls").innerHTML = "";
+  document.getElementById("detail-panel-body").innerHTML =
+    rows || "<p>No instances found.</p>";
+}
+
+async function openPromptInstances(promptText) {
+  const response = await fetch(
+    `/api/analysis/repeated-prompts/instances?prompt_text=${encodeURIComponent(promptText)}`,
+  );
+  const instances = await response.json();
+  renderPromptInstancesPanel(instances);
+  document.getElementById("detail-panel").style.display = "flex";
+}
+
+// Consecutive records sharing session_id + prompt_text are one human/subagent
+// turn split across several closing text blocks by stage 1's adapter -- a
+// display-only workaround, not an ingestion-level fix. Duplicated from
+// accounting.js (see tests/test_accounting_js.mjs) since this project has no
+// build step / shared-module mechanism between static JS files.
+function collapseFragments(records) {
+  const groups = [];
+  for (const record of records) {
+    const last = groups[groups.length - 1];
+    if (
+      last &&
+      last.session_id === record.session_id &&
+      last.prompt_text === record.prompt_text
+    ) {
+      last.fragments.push(record);
+    } else {
+      groups.push({
+        session_id: record.session_id,
+        prompt_text: record.prompt_text,
+        is_subagent: record.is_subagent,
+        agent_type: record.agent_type,
+        agent_description: record.agent_description,
+        model: record.model,
+        timestamp: record.timestamp,
+        fragments: [record],
+      });
+    }
+  }
+  return groups.map((group) => {
+    const totals = {
+      input_tokens: 0,
+      cache_write_tokens: 0,
+      cache_read_tokens: 0,
+      output_tokens: 0,
+      cost_usd: null,
+    };
+    for (const fragment of group.fragments) {
+      totals.input_tokens += fragment.input_tokens;
+      totals.cache_write_tokens += fragment.cache_write_tokens;
+      totals.cache_read_tokens += fragment.cache_read_tokens;
+      totals.output_tokens += fragment.output_tokens;
+      if (fragment.cost_usd !== null) {
+        totals.cost_usd = (totals.cost_usd ?? 0) + fragment.cost_usd;
+      }
+    }
+    return { ...group, totals };
+  });
+}
+
+let currentSessionGroups = [];
+
+function sortGroups(groups, sortBy) {
+  const sorted = [...groups];
+  if (sortBy === "cost") {
+    sorted.sort((a, b) => (b.totals.cost_usd ?? -Infinity) - (a.totals.cost_usd ?? -Infinity));
+  } else if (sortBy === "model") {
+    sorted.sort((a, b) => (a.model || "").localeCompare(b.model || ""));
+  } else {
+    sorted.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }
+  return sorted;
+}
+
+function renderSessionGroupsBody(groups) {
+  const groupsHtml = groups
+    .map((group) => {
+      const fragmentsHtml = group.fragments
+        .map(
+          (fragment) => `
+            <div class="fragment">
+              <div class="meta">
+                ${escapeHtml(fragment.model || "unknown model")} ·
+                ${formatCost(fragment.cost_usd)}
+                · in ${fragment.input_tokens.toLocaleString()} · cache write
+                ${fragment.cache_write_tokens.toLocaleString()} · cache read
+                ${fragment.cache_read_tokens.toLocaleString()} · out
+                ${fragment.output_tokens.toLocaleString()}
+              </div>
+              <div>${escapeHtml((fragment.response_text || "").slice(0, 300))}${
+                (fragment.response_text || "").length > 300 ? "…" : ""
+              }</div>
+            </div>
+          `,
+        )
+        .join("");
+
+      return `
+        <details class="prompt-group">
+          <summary>
+            ${escapeHtml((group.prompt_text || "").slice(0, 120))}${agentBadge(group)}
+            <div class="meta">
+              ${escapeHtml(group.timestamp)} · ${escapeHtml(group.model || "unknown model")} ·
+              ${formatCost(group.totals.cost_usd)}
+              (${group.fragments.length} fragment${group.fragments.length > 1 ? "s" : ""})
+            </div>
+          </summary>
+          ${fragmentsHtml}
+        </details>
+      `;
+    })
+    .join("");
+
+  const total = groups.reduce(
+    (sum, g) => (g.totals.cost_usd === null ? sum : sum + g.totals.cost_usd),
+    0,
+  );
+
+  document.getElementById("detail-panel-body").innerHTML = `
+    ${groupsHtml || "<p>No prompts found for this session.</p>"}
+    <div class="panel-total">Total across all prompts shown: ${formatCost(total)}</div>
+  `;
+}
+
+function renderSessionPromptsPanel(sessionName, groups) {
+  currentSessionGroups = groups;
+
+  document.getElementById("detail-panel-title").innerHTML =
+    `<h2>${escapeHtml(sessionName)} <span class="prompt-count">(${groups.length})</span></h2>`;
+
+  document.getElementById("detail-panel-controls").innerHTML = `
+    <label class="panel-controls">
+      Sort by:
+      <select id="session-sort-by">
+        <option value="date" selected>Date</option>
+        <option value="cost">Cost</option>
+        <option value="model">Model</option>
+      </select>
+    </label>
+  `;
+  document.getElementById("session-sort-by").addEventListener("change", (event) => {
+    renderSessionGroupsBody(sortGroups(currentSessionGroups, event.target.value));
+  });
+
+  renderSessionGroupsBody(groups);
+}
+
+async function openSessionInstances(sessionId) {
+  const response = await fetch(
+    `/api/records?session_id=${encodeURIComponent(sessionId)}&limit=500`,
+  );
+  const records = await response.json();
+  const sessionName = records[0]?.session_name || `${sessionId.slice(0, 8)}…`;
+  renderSessionPromptsPanel(sessionName, collapseFragments(records));
+  document.getElementById("detail-panel").style.display = "flex";
+}
+
+function closeDetailPanel() {
+  document.getElementById("detail-panel").style.display = "none";
 }
 
 function renderUnknownCostNote(unknownCost) {
@@ -285,5 +478,18 @@ function loadAndRender() {
 
 if (typeof window !== "undefined") {
   document.getElementById("group-by").addEventListener("change", loadAndRender);
+  document.getElementById("detail-panel-close").addEventListener("click", closeDetailPanel);
+  document.querySelector("#repeated-prompts-table tbody").addEventListener("click", (event) => {
+    const cell = event.target.closest(".prompt-cell");
+    if (cell) openPromptInstances(cell.dataset.prompt);
+  });
+  document.querySelector("#top-sessions-table tbody").addEventListener("click", (event) => {
+    const cell = event.target.closest(".session-cell");
+    if (cell) openSessionInstances(cell.dataset.sessionId);
+  });
   loadAndRender();
+}
+
+if (typeof module !== "undefined") {
+  module.exports = { collapseFragments };
 }
