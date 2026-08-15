@@ -11,7 +11,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 
-from db.database import DEFAULT_DB_PATH, get_connection
+from db.database import DEFAULT_DB_PATH, SYNTHETIC_MODEL, get_connection
 
 router = APIRouter()
 
@@ -51,12 +51,14 @@ def get_records_summary(
             FROM records
             WHERE (:source IS NULL OR source = :source)
               AND (:is_estimated IS NULL OR is_estimated = :is_estimated)
+              AND model IS NOT :synthetic_model
             GROUP BY period, source, is_estimated
             ORDER BY period
             """,
             {
                 "source": source,
                 "is_estimated": None if is_estimated is None else int(is_estimated),
+                "synthetic_model": SYNTHETIC_MODEL,
             },
         ).fetchall()
     finally:
@@ -113,6 +115,7 @@ def list_records(
                 :period_format IS NULL
                 OR strftime(:period_format, timestamp) = :period
               )
+              AND model IS NOT :synthetic_model
             ORDER BY timestamp {order}
             LIMIT :limit OFFSET :offset
             """,
@@ -126,6 +129,7 @@ def list_records(
                 "period": period,
                 "limit": limit,
                 "offset": offset,
+                "synthetic_model": SYNTHETIC_MODEL,
             },
         ).fetchall()
     finally:
@@ -160,10 +164,11 @@ def get_period_sessions(
                 GROUP_CONCAT(DISTINCT model) AS models
             FROM records
             WHERE strftime('{period_format}', timestamp) = :period
+              AND model IS NOT :synthetic_model
             GROUP BY session_id
             ORDER BY cost_usd DESC
             """,
-            {"period": period},
+            {"period": period, "synthetic_model": SYNTHETIC_MODEL},
         ).fetchall()
     finally:
         conn.close()
