@@ -8,7 +8,7 @@ subagent-attribution and 1h/5m cache-pricing revisions.
 
 import sqlite3
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from fastapi import APIRouter, Depends, Query
 
@@ -37,7 +37,7 @@ def _category_costs(model: str | None, row: sqlite3.Row) -> dict[str, float] | N
     getting a dollar figure *per category* means re-applying the same
     `db.pricing.PRICING` rates here rather than re-deriving them.
     """
-    rates = PRICING.get(model)
+    rates = PRICING.get(model) if model is not None else None
     if rates is None:
         return None
     (
@@ -276,7 +276,7 @@ def _cost_drivers_data(conn: sqlite3.Connection, group_by: str) -> dict:
     ]
     cost_by_model_list = sorted(
         [{"model": model, "cost_usd": cost} for model, cost in cost_by_model.items()],
-        key=lambda r: r["cost_usd"],
+        key=lambda r: cast(float, r["cost_usd"]),
         reverse=True,
     )
     for period_bucket in cost_by_category_model.values():
@@ -388,7 +388,7 @@ def _cost_drivers_data(conn: sqlite3.Connection, group_by: str) -> dict:
 
 
 def _known_skills() -> list[dict[str, str]]:
-    skills = []
+    skills: list[dict[str, str]] = []
     if not SKILLS_DIR.is_dir():
         return skills
     for skill_dir in SKILLS_DIR.iterdir():

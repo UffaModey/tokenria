@@ -17,7 +17,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install fastapi uvicorn tiktoken python-dotenv pytest ruff httpx2
+        run: pip install fastapi uvicorn tiktoken python-dotenv pytest ruff mypy httpx2
 
       - name: Lint (ruff check)
         run: ruff check .
@@ -25,5 +25,18 @@ jobs:
       - name: Format check (ruff format)
         run: ruff format --check .
 
+      - name: Type check (mypy)
+        run: mypy .
+
       - name: Test (pytest)
         run: pytest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Test (headless JS)
+        run: |
+          node tests/test_accounting_js.mjs
+          node tests/test_tagging_js.mjs
+          node tests/test_analysis_js.mjs
