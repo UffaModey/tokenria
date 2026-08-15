@@ -38,7 +38,7 @@ def compute_cost(
 
     None (not 0) is deliberate: an unrecognized model's cost is unknown, not free.
     """
-    rates = PRICING.get(model)
+    rates = PRICING.get(model) if model is not None else None
     if rates is None:
         return None
     (

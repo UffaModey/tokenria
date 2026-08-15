@@ -53,11 +53,14 @@ function splitIntoChunks(text, maxLen = MAX_CHUNK_LEN) {
   return ranges;
 }
 
-function computeRatio() {
+// Defaults to the module-level `chunks` for the live page; accepts an
+// explicit list so this stays a pure function under headless test (see
+// tests/test_tagging_js.mjs).
+function computeRatio(chunkList = chunks) {
   let usedChars = 0;
   let discardedChars = 0;
   let reviewed = 0;
-  for (const chunk of chunks) {
+  for (const chunk of chunkList) {
     const length = chunk.end - chunk.start;
     if (chunk.state === "used") {
       usedChars += length;
@@ -69,7 +72,7 @@ function computeRatio() {
   }
   const reviewedChars = usedChars + discardedChars;
   const ratio = reviewedChars === 0 ? null : usedChars / reviewedChars;
-  return { ratio, reviewed, total: chunks.length };
+  return { ratio, reviewed, total: chunkList.length };
 }
 
 function renderRatio() {
@@ -310,5 +313,14 @@ async function saveTags() {
   document.getElementById("save-status").textContent = "Saved.";
 }
 
-document.getElementById("save-btn").addEventListener("click", saveTags);
-loadPicker();
+// Guarded so this file can be `require()`d headlessly (see
+// tests/test_tagging_js.mjs) to unit-test splitIntoChunks/computeRatio
+// without a real browser/fetch environment.
+if (typeof window !== "undefined") {
+  document.getElementById("save-btn").addEventListener("click", saveTags);
+  loadPicker();
+}
+
+if (typeof module !== "undefined") {
+  module.exports = { splitIntoChunks, computeRatio };
+}

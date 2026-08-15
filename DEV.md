@@ -1,14 +1,14 @@
 # Running Tokenria locally
 
-Stages 1-4 are implemented (Claude Code ingestion, SQLite persistence, accounting view,
-tagging view). This is how to run what exists today.
+Stages 1-4 and 3.1 are implemented (Claude Code ingestion, SQLite persistence, accounting view,
+tagging view, analysis view). This is how to run what exists today.
 
 ## 1. Set up the environment
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install fastapi uvicorn tiktoken python-dotenv pytest ruff httpx
+pip install fastapi uvicorn tiktoken python-dotenv pytest ruff mypy httpx2
 ```
 
 Note: don't use `pip install -e .` — this repo has multiple top-level packages (`app`, `db`,
@@ -41,15 +41,31 @@ single-user tool with no auth, so it shouldn't accept connections from other mac
   detail table.
 - **http://127.0.0.1:8000/static/tagging.html** — Tagging view: pick a record, click through its
   response chunks (unmarked → used → discarded), save, see the adoption ratio update live.
+- **http://127.0.0.1:8000/static/analysis.html** — Analysis view: token-category and cache-read
+  trends over time, repeated-prompt detection, per-model and human-vs-subagent cost drivers, and
+  rule-based recommendations. Links straight into the accounting drill-down for any period or
+  session it surfaces.
 
-Both pages link to each other via the nav bar at the top.
+All three pages link to each other via the nav bar at the top.
 
-## 4. Run the tests / linter
+## 4. Run the tests / linter / type checker
 
 ```bash
-pytest          # tests/test_claude_code_adapter.py, test_database.py, test_accounting_routes.py, test_tagging_routes.py
-ruff check .    # lint
-ruff format .   # format
+pytest          # tests/test_claude_code_adapter.py, test_database.py, test_accounting_routes.py,
+                 # test_tagging_routes.py, test_analysis_routes.py
+ruff check .     # lint
+ruff format .    # format
+mypy .           # type check (app/, db/, ingest/, main.py)
+```
+
+The frontend also has headless Node tests for the client-side logic that doesn't touch the DOM
+(chunk-splitting, adoption ratio, prompt-fragment collapsing). These aren't wired into `pytest`,
+run them directly with Node's built-in test runner:
+
+```bash
+node tests/test_accounting_js.mjs
+node tests/test_tagging_js.mjs
+node tests/test_analysis_js.mjs
 ```
 
 ## Notes for actually using it

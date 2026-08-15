@@ -52,7 +52,7 @@ Tokenria does not reveal the internal mechanics of how a closed model (Claude, G
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install fastapi uvicorn tiktoken python-dotenv pytest ruff httpx
+pip install fastapi uvicorn tiktoken python-dotenv pytest ruff mypy httpx2
 ```
 
 Ingest your real Claude Code usage data (parses every session under `~/.claude/projects/**/*.jsonl`, safe to re-run any time):
@@ -91,6 +91,10 @@ Every ingested record is tagged as either *exact* (real provider usage data) or 
 ![Tokenria tagging view, a record's prompt and chunked response ready for review](docs/screenshots/tagging.png)
 ![Tokenria tagging view, reviewed chunks and the resulting adoption ratio, 100% adopted across 7 of 12 chunks reviewed](docs/screenshots/tagging-ratio.png)
 
+**Analysis**: token-category trends over time, model-usage mix, and cost drivers, with rule-based recommendations underneath:
+
+![Tokenria analysis view, model-usage trends over time and a cost-by-category breakdown chart](docs/screenshots/analysis.png)
+
 <h2 id="design-principles">Design Principles</h2>
 
 <details>
@@ -121,3 +125,7 @@ This project is being built in the open, in stages, each one built and verified 
 ## License
 
 Released under the [MIT License](LICENSE).
+
+---
+
+<sub>Why I built this: agentic engineering makes it easy to lose track of what you're actually paying for and getting back, so I wanted a number I could trust, not a vendor dashboard total.</sub>
