@@ -12,7 +12,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.3",
-    "ruff>=0.6.0",
+    "ruff>=0.16.2",
     "httpx2>=2.0",
     "mypy>=1.11",
 ]
