@@ -209,6 +209,20 @@ def _repeated_prompts_data(
     ]
 
 
+def _prompt_instances_data(conn: sqlite3.Connection, prompt_text: str) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT * FROM records
+        WHERE prompt_text = :prompt_text
+          AND model IS NOT :synthetic_model
+        ORDER BY timestamp ASC
+        """,
+        {"prompt_text": prompt_text, "synthetic_model": SYNTHETIC_MODEL},
+    ).fetchall()
+
+    return [{**dict(row), "is_estimated": bool(row["is_estimated"])} for row in rows]
+
+
 def _cost_drivers_data(conn: sqlite3.Connection, group_by: str) -> dict:
     period_format = GROUP_BY_FORMATS[group_by]
     period_model_rows = _fetch_period_model_totals(conn, period_format)
